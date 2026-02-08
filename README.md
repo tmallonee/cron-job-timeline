@@ -1,7 +1,7 @@
 # cron-job-timeline
 A simple webpage that shows when your manually entered cron jobs run. It updates in real time so you can see what's running now, what just ran, and what's coming up.
 
-All data is managed via a json file with data edited in manually. It does not automatically fill in data from a crontab. 
+All data is managed via a json file with data edited in manually in the json file. It does not automatically fill in data from a crontab. 
 
 It supports separating cronjobs via different servers, colors and timezone offsets. See example json file. 
 
