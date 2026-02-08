@@ -1,0 +1,32 @@
+{
+  "serverColors": {
+    "web-server": "OrangeRed",
+    "backup-server": "DeepSkyBlue",
+    "desktop-pc": "MediumVioletRed",
+    "media-server": "LimeGreen"
+  },
+  "defaultColor": "#2196f3",
+  "timezoneOffsets": {
+    "media-server": 8
+  },
+  "jobs": [
+    { "name": "website data sync", "cron": "55 */1 * * *", "server": "web-server" },
+    { "name": "status report", "cron": "0,15,30,45 * * * *", "server": "web-server" },
+    { "name": "sync documents", "cron": "0,20,40 * * * *", "server": "backup-server" },
+    { "name": "sync photos", "cron": "2,22,42 * * * *", "server": "backup-server" },
+    { "name": "sync videos", "cron": "4,24,44 * * * *", "server": "backup-server" },
+    { "name": "cleanup documents", "cron": "0 4,16 * * *", "server": "backup-server" },
+    { "name": "cleanup photos", "cron": "1 4,16 * * *", "server": "backup-server" },
+    { "name": "cleanup videos", "cron": "2 4,16 * * *", "server": "backup-server" },
+    { "name": "backup config files", "cron": "0 3 * * 0", "server": "backup-server" },
+    { "name": "backup scripts", "cron": "0 3 * * 1", "server": "backup-server" },
+    { "name": "check network status", "cron": "30 4 * * *", "server": "backup-server" },
+    { "name": "photo archive backup", "cron": "30 3 * * 0", "server": "backup-server" },
+    { "name": "clean old downloads", "cron": "*/30 * * * *", "server": "media-server" },
+    { "name": "clean media library", "cron": "0 0 * * *", "server": "media-server" },
+    { "name": "update media config", "cron": "17 22 * * *", "server": "media-server" },
+    { "name": "update media app 1", "cron": "25 12 * * 5", "server": "media-server" },
+    { "name": "update media app 2", "cron": "35 12 * * 5", "server": "media-server" },
+    { "name": "sync games library", "cron": "5,25,45 * * * *", "server": "desktop-pc" }
+  ]
+}

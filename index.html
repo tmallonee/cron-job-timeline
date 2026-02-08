@@ -1,0 +1,592 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cron Job Timeline</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: #1a1a1a;
+        color: #e0e0e0;
+        padding: 15px;
+        min-height: 100vh;
+      }
+
+      .container {
+        max-width: 900px;
+        margin: 0 auto;
+      }
+
+      h1 {
+        text-align: center;
+        margin-bottom: 15px;
+        color: #fff;
+      }
+
+      .timeline {
+        position: relative;
+        padding-left: 200px;
+        margin-right: 150px;
+      }
+
+      .timeline-item {
+        display: flex;
+        align-items: center;
+        margin-bottom: 1px;
+        min-height: 36px;
+      }
+
+      .time-label {
+        position: absolute;
+        left: 0;
+        width: 180px;
+        text-align: right;
+        padding-right: 20px;
+        color: #999;
+        font-size: 14px;
+        cursor: help;
+      }
+
+      .job-card {
+        background: #2a2a2a;
+        padding: 8px 16px;
+        border-radius: 4px;
+        border-left: 3px solid #555;
+        flex: 1;
+        color: #ccc;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .job-name {
+        flex: 1;
+      }
+
+      .job-server {
+        font-size: 12px;
+        margin-left: 16px;
+        font-family: "Courier New", monospace;
+      }
+
+      .job-card.current {
+        background: #1a3a1a;
+        border-left-color: #4caf50;
+        color: #4caf50;
+        font-weight: 600;
+        box-shadow: 0 0 10px rgba(76, 175, 80, 0.3);
+      }
+
+      .job-card.past {
+        opacity: 0.5;
+      }
+
+      .job-card.upcoming {
+        border-left-color: #2196f3;
+      }
+
+      .current-time-marker {
+        display: flex;
+        align-items: center;
+        margin: 12px 0;
+        font-weight: bold;
+        color: #4caf50;
+      }
+
+      .current-time-marker .time-label {
+        color: #4caf50;
+      }
+
+      .current-time-line {
+        flex: 1;
+        height: 2px;
+        background: #4caf50;
+        box-shadow: 0 0 8px rgba(76, 175, 80, 0.5);
+      }
+
+      .clock {
+        text-align: center;
+        font-size: 24px;
+        margin-bottom: 15px;
+        color: #4caf50;
+        font-weight: 300;
+      }
+
+      .job-details {
+        margin-top: 30px;
+        padding-top: 30px;
+        border-top: 1px solid #333;
+      }
+
+      .job-details h2 {
+        font-size: 18px;
+        margin-bottom: 15px;
+        color: #fff;
+        text-align: center;
+      }
+
+      .job-selector {
+        width: 100%;
+        max-width: 500px;
+        padding: 10px;
+        background: #2a2a2a;
+        color: #e0e0e0;
+        border: 1px solid #444;
+        border-radius: 4px;
+        font-size: 14px;
+        margin: 0 auto 20px;
+        display: block;
+      }
+
+      .job-info {
+        background: #2a2a2a;
+        padding: 20px;
+        border-radius: 4px;
+        border-left: 3px solid #2196f3;
+        max-width: 600px;
+        margin: 0 auto;
+      }
+
+      .job-info-row {
+        display: flex;
+        margin-bottom: 12px;
+        font-size: 14px;
+      }
+
+      .job-info-label {
+        color: #888;
+        min-width: 120px;
+        font-weight: 500;
+      }
+
+      .job-info-value {
+        color: #e0e0e0;
+        font-family: "Courier New", monospace;
+      }
+
+      .next-runs {
+        margin-top: 15px;
+      }
+
+      .next-runs-title {
+        color: #888;
+        font-weight: 500;
+        margin-bottom: 8px;
+        font-size: 14px;
+      }
+
+      .next-run-item {
+        padding: 6px 0;
+        color: #e0e0e0;
+        font-family: "Courier New", monospace;
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Cron Job Timeline</h1>
+      <div class="clock" id="clock"></div>
+      <div class="timeline" id="timeline"></div>
+
+      <div class="job-details">
+        <h2>Job Details</h2>
+        <select class="job-selector" id="jobSelector">
+          <option value="">Select a job...</option>
+        </select>
+        <div id="jobInfo"></div>
+      </div>
+    </div>
+
+    <script>
+      // Configuration
+      const PAST_JOBS_LIMIT = 5;
+      const UPCOMING_JOBS_LIMIT = 10;
+      const CONFIG_FILE = "cron-config.json";
+      let defaultColor = "#2196f3";
+
+      // Timezone offsets in hours (difference from your local time)
+      let timezoneOffsets = {};
+
+      let cronJobs = [];
+      let serverColors = {};
+
+      // Load cron jobs from external config file
+      async function loadConfig() {
+        try {
+          const response = await fetch(CONFIG_FILE);
+          if (!response.ok) {
+            throw new Error(`Failed to load ${CONFIG_FILE}`);
+          }
+          const data = await response.json();
+          cronJobs = data.jobs || [];
+          serverColors = data.serverColors || {};
+          defaultColor = data.defaultColor || "#2196f3";
+
+          // Add this line to load timezone offsets
+          timezoneOffsets = data.timezoneOffsets || {};
+
+          populateJobSelector();
+          generateTimeline();
+        } catch (error) {
+          console.error("Error loading config:", error);
+          document.getElementById("timeline").innerHTML = `
+            <div style="color: #f44336; padding: 20px; text-align: center;">
+                <p>Error loading ${CONFIG_FILE}</p>
+                <p style="font-size: 14px; margin-top: 10px;">Make sure the file exists in the same directory.</p>
+                <p style="font-size: 12px; color: #999; margin-top: 10px;">Expected format: {"serverColors": {...}, "timezoneOffsets": {...}, "jobs": [...]}</p>
+            </div>
+        `;
+        }
+      }
+
+      function populateJobSelector() {
+        const selector = document.getElementById("jobSelector");
+        selector.innerHTML = '<option value="">Select a job...</option>';
+
+        cronJobs.forEach((job, index) => {
+          const option = document.createElement("option");
+          option.value = index;
+          option.textContent = `${job.name}${job.server ? " [" + job.server + "]" : ""}`;
+          selector.appendChild(option);
+        });
+      }
+
+      function displayJobDetails(jobIndex) {
+        if (jobIndex === "") {
+          document.getElementById("jobInfo").innerHTML = "";
+          return;
+        }
+
+        const job = cronJobs[jobIndex];
+        const offset = job.server && timezoneOffsets[job.server] ? timezoneOffsets[job.server] : 0;
+
+        const now = new Date();
+        const runs = getNextCronRuns(job.cron, now, 30, offset);
+
+        const nextRun = runs.find((r) => r > now);
+        const lastRun = runs.filter((r) => r < now).pop();
+
+        let html = '<div class="job-info">';
+        html += `<div class="job-info-row"><span class="job-info-label">Name:</span><span class="job-info-value">${job.name}</span></div>`;
+        html += `<div class="job-info-row"><span class="job-info-label">Cron Expression:</span><span class="job-info-value">${job.cron}</span></div>`;
+
+        if (job.server) {
+          html += `<div class="job-info-row"><span class="job-info-label">Server:</span><span class="job-info-value">${job.server}</span></div>`;
+        }
+
+        if (offset !== 0) {
+          html += `<div class="job-info-row"><span class="job-info-label">Timezone Offset:</span><span class="job-info-value">${offset > 0 ? "+" : ""}${offset} hours</span></div>`;
+        }
+
+        if (lastRun) {
+          const lastRunStr = lastRun.toLocaleString("en-US", {
+            month: "short",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+          });
+          html += `<div class="job-info-row"><span class="job-info-label">Last Run:</span><span class="job-info-value">${lastRunStr}</span></div>`;
+        }
+
+        if (nextRun) {
+          const nextRunStr = nextRun.toLocaleString("en-US", {
+            month: "short",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+          });
+          const totalSeconds = Math.floor((nextRun - now) / 1000);
+          const minutes = Math.floor(totalSeconds / 60);
+          const seconds = totalSeconds % 60;
+
+          let timeUntilText;
+          if (minutes === 0) {
+            // Less than 1 minute, show seconds
+            timeUntilText = `${seconds}s`;
+          } else if (minutes === 1 && seconds === 0) {
+            // Exactly 1 minute
+            timeUntilText = "1 min";
+          } else {
+            // More than 1 minute, show MM:SS
+            timeUntilText = `${minutes}:${seconds.toString().padStart(2, "0")}`;
+          }
+
+          html += `<div class="job-info-row"><span class="job-info-label">Next Run:</span><span class="job-info-value">${nextRunStr} (in ${timeUntilText})</span></div>`;
+        }
+
+        const upcomingRuns = runs.filter((r) => r > now).slice(0, 5);
+        if (upcomingRuns.length > 0) {
+          html += '<div class="next-runs">';
+          html += '<div class="next-runs-title">Next 5 Runs:</div>';
+          upcomingRuns.forEach((run) => {
+            const runStr = run.toLocaleString("en-US", {
+              weekday: "short",
+              month: "short",
+              day: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+              hour12: false,
+            });
+            html += `<div class="next-run-item">${runStr}</div>`;
+          });
+          html += "</div>";
+        }
+
+        html += "</div>";
+        document.getElementById("jobInfo").innerHTML = html;
+      }
+
+      document.getElementById("jobSelector").addEventListener("change", (e) => {
+        displayJobDetails(e.target.value);
+      });
+
+      function parseCronField(field, max) {
+        const values = [];
+
+        if (field === "*") {
+          for (let i = 0; i <= max; i++) values.push(i);
+          return values;
+        }
+
+        if (field.includes("/")) {
+          const [range, step] = field.split("/");
+          const start = range === "*" ? 0 : parseInt(range);
+          const stepNum = parseInt(step);
+
+          if (isNaN(start) || isNaN(stepNum) || stepNum <= 0) {
+            console.error(`Invalid cron step syntax: ${field}`);
+            return [];
+          }
+
+          for (let i = start; i <= max; i += stepNum) {
+            values.push(i);
+          }
+          return values;
+        }
+
+        if (field.includes(",")) {
+          return field
+            .split(",")
+            .map((v) => parseInt(v))
+            .filter((v) => !isNaN(v) && v >= 0 && v <= max);
+        }
+
+        if (field.includes("-")) {
+          const [start, end] = field.split("-").map((v) => parseInt(v));
+          if (isNaN(start) || isNaN(end)) {
+            console.error(`Invalid cron range syntax: ${field}`);
+            return [];
+          }
+          for (let i = start; i <= end && i <= max; i++) values.push(i);
+          return values;
+        }
+
+        const num = parseInt(field);
+        if (isNaN(num) || num < 0 || num > max) {
+          console.error(`Invalid cron value: ${field} (must be 0-${max})`);
+          return [];
+        }
+
+        return [num];
+      }
+
+      function getNextCronRuns(cronExpr, fromDate, count = 20, timezoneOffset = 0) {
+        const parts = cronExpr.trim().split(/\s+/);
+        if (parts.length < 2) {
+          console.error(`Invalid cron expression: ${cronExpr}`);
+          return [];
+        }
+
+        const minutes = parseCronField(parts[0], 59);
+        const hours = parseCronField(parts[1], 23);
+
+        if (minutes.length === 0 || hours.length === 0) {
+          console.error(`Invalid cron expression: ${cronExpr}`);
+          return [];
+        }
+
+        const runs = [];
+        const current = new Date(fromDate);
+
+        current.setHours(current.getHours() + timezoneOffset);
+        current.setSeconds(0, 0);
+        current.setHours(current.getHours() - 2);
+
+        let iterations = 0;
+        const maxIterations = 10000;
+
+        while (runs.length < count && iterations < maxIterations) {
+          if (hours.includes(current.getHours()) && minutes.includes(current.getMinutes())) {
+            const localTime = new Date(current);
+            localTime.setHours(localTime.getHours() - timezoneOffset);
+            runs.push(localTime);
+          }
+          current.setMinutes(current.getMinutes() + 1);
+          iterations++;
+        }
+
+        return runs;
+      }
+
+      function updateClock() {
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString("en-US", { hour12: false });
+        document.getElementById("clock").textContent = timeStr;
+      }
+
+      function formatTimeLabel(date, now) {
+        // Create boundaries for current minute
+        const startOfCurrentMinute = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes());
+        const endOfCurrentMinute = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes(), 59, 999);
+
+        // Check if date is within current minute
+        if (date >= startOfCurrentMinute && date <= endOfCurrentMinute) {
+          return "now";
+        }
+
+        // Calculate the difference in seconds
+        const diffMs = date - now;
+
+        if (diffMs < 0) {
+          // For past: use Math.floor for actual minutes passed
+          const diffMinutes = Math.abs(diffMs) / 1000 / 60;
+          const minutesAgo = Math.floor(diffMinutes);
+
+          if (minutesAgo === 0) {
+            return "just now";
+          } else if (minutesAgo === 1) {
+            return "1 minute ago";
+          } else {
+            return `${minutesAgo} minutes ago`;
+          }
+        }
+
+        // For future: show MM:SS format
+        const totalSeconds = Math.floor(diffMs / 1000);
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+
+        // Format as MM:SS with leading zeros
+        return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+      }
+
+      function getServerColor(server) {
+        if (!server) return defaultColor;
+        return serverColors[server] || defaultColor;
+      }
+
+      function generateTimeline() {
+        const now = new Date();
+        const timeline = document.getElementById("timeline");
+        timeline.innerHTML = "";
+
+        const allJobs = [];
+
+        cronJobs.forEach((job) => {
+          const offset = job.server && timezoneOffsets[job.server] ? timezoneOffsets[job.server] : 0;
+
+          const runs = getNextCronRuns(job.cron, now, 50, offset);
+
+          runs.forEach((runTime) => {
+            // Remove diffMinutes - we don't need it
+            allJobs.push({
+              name: job.name,
+              server: job.server,
+              time: runTime,
+            });
+          });
+        });
+
+        allJobs.sort((a, b) => a.time - b.time);
+
+        // Create a date for the start of current minute
+        const startOfCurrentMinute = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes());
+
+        // Create a date for the end of current minute
+        const endOfCurrentMinute = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes(), 59, 999);
+
+        const currentJobs = allJobs.filter((j) => {
+          return j.time >= startOfCurrentMinute && j.time <= endOfCurrentMinute;
+        });
+
+        const pastJobs = allJobs
+          .filter((j) => {
+            // Jobs that have already passed this minute
+            return j.time < startOfCurrentMinute;
+          })
+          .slice(-PAST_JOBS_LIMIT);
+
+        const upcomingJobs = allJobs
+          .filter((j) => {
+            // Jobs in future minutes (not current minute)
+            return j.time > endOfCurrentMinute;
+          })
+          .slice(0, UPCOMING_JOBS_LIMIT);
+
+        const displayJobs = [...pastJobs, ...currentJobs, ...upcomingJobs];
+        let currentTimeInserted = false;
+
+        displayJobs.forEach((job) => {
+          // Fix this comparison - use startOfCurrentMinute instead of now
+          if (!currentTimeInserted && job.time >= startOfCurrentMinute) {
+            const marker = document.createElement("div");
+            marker.className = "timeline-item current-time-marker";
+            marker.innerHTML = `
+                <div class="time-label">current time</div>
+                <div class="current-time-line"></div>
+            `;
+            timeline.appendChild(marker);
+            currentTimeInserted = true;
+          }
+
+          const item = document.createElement("div");
+          item.className = "timeline-item";
+
+          let jobClass = "upcoming";
+          const isCurrent = job.time >= startOfCurrentMinute && job.time <= endOfCurrentMinute;
+
+          if (isCurrent) {
+            jobClass = "current";
+          } else if (job.time < startOfCurrentMinute) {
+            jobClass = "past";
+          }
+
+          const serverColor = getServerColor(job.server);
+          const timeStr = job.time.toLocaleTimeString("en-US", {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+          });
+
+          item.innerHTML = `
+            <div class="time-label" title="${timeStr}">${formatTimeLabel(job.time, now)}</div>
+            <div class="job-card ${jobClass}" style="border-left-color: ${serverColor};">
+                <span class="job-name">${job.name}</span>
+                ${job.server ? `<span class="job-server" style="color: ${serverColor};">${job.server}</span>` : ""}
+            </div>
+        `;
+
+          timeline.appendChild(item);
+        });
+      }
+      updateClock();
+      loadConfig();
+      setInterval(() => {
+        updateClock();
+        if (cronJobs.length > 0) {
+          generateTimeline();
+        }
+      }, 1000);
+    </script>
+  </body>
+</html>
